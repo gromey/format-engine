@@ -46,5 +46,14 @@ func (t tag) Decode(tagValue, fieldName string, data []byte) ([]byte, error) {
     // TODO Implement me!
     // Because format-engine doesn't know anything about your format,
     // you need to find the field value and performs a primary decode.
+    // If cfg.RemoveSeparatorWhenDecoding is true you must remove the field value from the input data.
+    // Example:
+    //      i := bytes.Index(data, cfg.ValueSeparator)
+    //      value := make([]byte, i)
+    //      copy(value, data[:i])
+    //      copy(data, data[i:])
+    //      copy(data[len(data)-i:], bytes.Repeat([]byte{' '}, i))
+    //      return value, nil
+
 	return data, nil
 }

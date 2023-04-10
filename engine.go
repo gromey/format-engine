@@ -49,10 +49,18 @@ type engine struct {
 }
 
 type Config struct {
-	StructOpener                []byte
-	StructCloser                []byte
-	UnwrapWhenDecoding          bool
-	ValueSeparator              []byte
+	// StructOpener a byte array that denotes the beginning of a structure.
+	// Will be automatically added when encoding.
+	StructOpener []byte
+	// StructCloser a byte array that denotes the end of a structure.
+	// Will be automatically added when encoding.
+	StructCloser []byte
+	// UnwrapWhenDecoding this flag tells the library whether to remove the StructOpener and StructCloser bytes of a structure.
+	UnwrapWhenDecoding bool
+	// ValueSeparator a byte array separating values.
+	// Will be automatically added when encoding.
+	ValueSeparator []byte
+	// RemoveSeparatorWhenDecoding this flag tells the library whether to remove the ValueSeparator.
 	RemoveSeparatorWhenDecoding bool
 }
 
