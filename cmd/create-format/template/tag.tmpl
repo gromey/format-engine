@@ -1,0 +1,50 @@
+package {{.LCName}}
+
+import (
+	"github.com/gromey/format-engine"
+)
+
+var (
+	cfg = engine.Config{
+		StructOpener:                nil,
+		StructCloser:                nil,
+		UnwrapWhenDecoding:          false,
+		ValueSeparator:              nil,
+		RemoveSeparatorWhenDecoding: false,
+	}
+	{{.LCName}} = engine.New(tag{name: "{{.LCName}}"}, cfg)
+)
+
+// Marshal encodes the value v and returns the encoded data.
+func Marshal(v any) ([]byte, error) {
+	return {{.LCName}}.Marshal(v)
+}
+
+// Unmarshal decodes the encoded data and stores the result in the value pointed to by v.
+func Unmarshal(b []byte, v any) error {
+	return {{.LCName}}.Unmarshal(b, v)
+}
+
+type tag struct {
+	name string
+	engine.Default
+}
+
+// Name returns the name of the tag.
+func (t tag) Name() string {
+	return t.name
+}
+
+// Encode takes encoded data and performs secondary encoding to {{.UCName}} format.
+func (t tag) Encode(tagValue, fieldName string, data []byte) ([]byte, error) {
+    // TODO If you need to format data implement me!
+	return data, nil
+}
+
+// Decode takes the raw encoded data and performs a primary decode from {{.UCName}} format.
+func (t tag) Decode(tagValue, fieldName string, data []byte) ([]byte, error) {
+    // TODO Implement me!
+    // Because format-engine doesn't know anything about your format,
+    // you need to find the field value and performs a primary decode.
+	return data, nil
+}
