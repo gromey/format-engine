@@ -102,6 +102,11 @@ func (s *decodeState) decodeStruct(data []byte, v reflect.Value, unwrap bool) (e
 
 	// Scan v for fields to decode.
 	for i := 0; i < t.NumField(); i++ {
+		// If the data is over, stop decoding.
+		if bytes.Trim(data, " ") == nil {
+			return
+		}
+
 		structField := t.Field(i)
 		fieldValue := v.Field(i)
 

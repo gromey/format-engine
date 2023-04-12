@@ -30,17 +30,17 @@ $ go run github.com/gromey/format-engine/cmd/create-format -n=name
 
 In this command, you must specify a name of your new formatter. The name must contain only letters and be as simple as possible.
 
-This command generates a package with the name specified in the generate command.   
+This command generates a package with the name specified in the generate command.
 The package will contain two files `asserts.go` and `tag.go`.
 
 **WARNING:** DO NOT EDIT `asserts.go`.
 
 `tag.go` will contain the base implementation of your new formatter. You need to implement two functions **Encode** and **Decode**.
 
-**Encode** function receives a value encoded into a byte array, if exists a tag value and a field name,    
+**Encode** function receives a value encoded into a byte array, if exists a tag value and a field name,
 here you can do additional encoding or return the byte array unchanged.
 
-**Decode** function receives an encoded data, if exists a tag value and a field name, here you must find a byte array   
+**Decode** function receives an encoded data, if exists a tag value and a field name, here you must find a byte array
 representing a value for the current field and perform initial decoding if necessary before returning this byte array.  
-You can change the input data and for the next field you will receive the data in a modified form,    
+You can change the input data and for the next field you will receive the data in a modified form,
 however this will not affect the original data, since you are working with a copy of the data.
