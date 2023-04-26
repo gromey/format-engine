@@ -19,7 +19,8 @@ func (e engine) Unmarshal(data []byte, v any) error {
 	}
 
 	s := e.newDecodeState()
-	s = s.cachedDecode(data, v)
+	//s = s.cachedDecode(data, v) // TODO it is the wrong way to decode into the same pointer.
+	s = s.cache(data, v)
 
 	return s.err
 }

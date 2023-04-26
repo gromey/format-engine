@@ -18,7 +18,8 @@ func (e engine) Marshal(v any) ([]byte, error) {
 	}
 
 	s := e.newEncodeState()
-	s = s.cachedEncode(v)
+	//s = s.cachedEncode(v) // TODO it is the wrong way to encode from the same pointer.
+	s = s.cache(v)
 
 	return s.buf, s.err
 }
