@@ -42,12 +42,6 @@ type Tag interface {
 	f()
 }
 
-type engine struct {
-	Tag
-	wrap, separate                             bool
-	structOpener, structCloser, valueSeparator []byte
-}
-
 type Config struct {
 	// StructOpener a byte array that denotes the beginning of a structure.
 	// Will be automatically added when encoding.
@@ -62,16 +56,30 @@ type Config struct {
 	ValueSeparator []byte
 	// RemoveSeparatorWhenDecoding this flag tells the library whether to remove the ValueSeparator.
 	RemoveSeparatorWhenDecoding bool
+	// Marshaller is used to check if a type implements a type of the Marshaller interface.
+	Marshaller reflect.Type
+	// Unmarshaler is used to check if a type implements a type of the Unmarshaler interface.
+	Unmarshaler reflect.Type
+}
+
+type engine struct {
+	Tag
+	wrap, separate, removeSeparator            bool
+	structOpener, structCloser, valueSeparator []byte
+	marshaller, unmarshaler                    reflect.Type
 }
 
 // New returns a new entity that implements the Engine interface.
 func New(tag Tag, cfg Config) Engine {
 	return &engine{
-		Tag:            tag,
-		wrap:           (len(cfg.StructOpener) != 0 || len(cfg.StructCloser) != 0) && cfg.UnwrapWhenDecoding,
-		separate:       len(cfg.ValueSeparator) != 0 && cfg.RemoveSeparatorWhenDecoding,
-		structOpener:   cfg.StructOpener,
-		structCloser:   cfg.StructCloser,
-		valueSeparator: cfg.ValueSeparator,
+		Tag:             tag,
+		wrap:            (len(cfg.StructOpener) != 0 || len(cfg.StructCloser) != 0) && cfg.UnwrapWhenDecoding,
+		separate:        len(cfg.ValueSeparator) != 0,
+		removeSeparator: len(cfg.ValueSeparator) != 0 && cfg.RemoveSeparatorWhenDecoding,
+		structOpener:    cfg.StructOpener,
+		structCloser:    cfg.StructCloser,
+		valueSeparator:  cfg.ValueSeparator,
+		marshaller:      cfg.Marshaller,
+		unmarshaler:     cfg.Unmarshaler,
 	}
 }

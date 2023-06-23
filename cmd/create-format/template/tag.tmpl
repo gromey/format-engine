@@ -1,6 +1,8 @@
 package {{.LCName}}
 
 import (
+    "reflect"
+
 	"github.com/gromey/format-engine"
 )
 
@@ -11,6 +13,9 @@ var (
 		UnwrapWhenDecoding:          false,
 		ValueSeparator:              nil,
 		RemoveSeparatorWhenDecoding: false,
+		// WARNING: DO NOT DELETE CONFIGURATIONS BELOW!
+        Marshaller:  reflect.TypeOf((*Marshaller)(nil)).Elem(),
+        Unmarshaler: reflect.TypeOf((*Unmarshaler)(nil)).Elem(),
 	}
 	{{.LCName}} = engine.New(tag{name: "{{.LCName}}"}, cfg)
 )
