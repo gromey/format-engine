@@ -144,18 +144,22 @@ func Test_contextSetError(t *testing.T) {
 		{
 			ctx: context{
 				structName: "structName",
-				fieldName:  "fieldName",
-				fieldType:  reflect.TypeOf(true),
-				err:        ErrNotSupportType,
+				field: field{
+					name: "fieldName",
+					typ:  reflect.TypeOf(true),
+				},
+				err: ErrNotSupportType,
 			},
 			expect: errors.New("tagName: cannot marshal/unmarshal Go struct field structName.fieldName of type bool: cannot support type"),
 		},
 		{
 			ctx: context{
 				structName: "",
-				fieldName:  "fieldName",
-				fieldType:  reflect.TypeOf(true),
-				err:        ErrNotSupportType,
+				field: field{
+					name: "fieldName",
+					typ:  reflect.TypeOf(true),
+				},
+				err: ErrNotSupportType,
 			},
 			expect: errors.New("tagName: cannot marshal/unmarshal Go value of type bool: cannot support type"),
 		},

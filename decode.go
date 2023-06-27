@@ -9,245 +9,244 @@ import (
 	"sync"
 )
 
-const unmarshalError = "unmarshal data into"
+const unmarshalError = "decode data into"
 
 // Unmarshal decodes the encoded data and stores the result in the value pointed to by v.
 // If v is nil or not a pointer, Unmarshal returns a decoder error.
-func (e engine) Unmarshal(data []byte, v any) error {
-	if v == nil {
-		return fmt.Errorf("%s: Unmarshal(nil)", e.Name())
-	}
-
+func (e *engine) Unmarshal(data []byte, v any) error {
 	s := e.newDecodeState()
-	//s = s.cachedDecode(data, v) // TODO it is the wrong way to decode into the same pointer.
-	s = s.cache(data, v)
+	defer decodeStatePool.Put(s)
 
+	s.buf = make([]byte, len(data))
+	copy(s.buf, data)
+
+	s.unmarshal(v)
 	return s.err
 }
 
 type decodeState struct {
-	engine
+	buf []byte
+	tmp []byte
 	context
+	*engine
 }
 
-func (e engine) newDecodeState() decodeState {
-	return decodeState{engine: e}
-}
+var decodeStatePool sync.Pool
 
-var decodeCache sync.Map // map[reflect.Type]decodeState
-
-// cachedDecode uses a cache to avoid repeated work.
-func (s *decodeState) cachedDecode(data []byte, v any) decodeState {
-	if f, ok := decodeCache.Load(v); ok {
-		return f.(decodeState)
+func (e *engine) newDecodeState() *decodeState {
+	if p := decodeStatePool.Get(); p != nil {
+		s := p.(*decodeState)
+		s.err = nil
+		return s
 	}
-	f, _ := decodeCache.LoadOrStore(v, s.cache(data, v))
-	return f.(decodeState)
+
+	return &decodeState{engine: e}
 }
 
-func (s *decodeState) cache(data []byte, v any) decodeState {
-	tmp := make([]byte, len(data))
-	copy(tmp, data)
-	if err := s.decode(tmp, v); err != nil {
+func (s *decodeState) unmarshal(v any) {
+	if err := s.reflectValue(reflect.ValueOf(v)); err != nil {
 		if errors.Is(err, ErrPointerToUnexported) || errors.Is(err, ErrInvalidFormat) {
 			s.err = err
 		} else {
 			s.setError(s.Name(), unmarshalError, err)
 		}
 	}
-	return *s
 }
 
-func (s *decodeState) decode(data []byte, v any) error {
-	rv := reflect.ValueOf(v)
+func (s *decodeState) reflectValue(v reflect.Value) error {
+	return s.cache(v.Type())(s, v)
+}
 
-	// If the input value is not a pointer, return the error.
-	if rv.Kind() != reflect.Pointer {
-		return fmt.Errorf("%s: Unmarshal(non-pointer %s)", s.Name(), rv.Type())
+type decoderFunc func(*decodeState, reflect.Value) error
+
+var decoderCache sync.Map // map[reflect.Type]decoderFunc
+
+// cache uses a cache to avoid repeated work.
+func (s *decodeState) cache(t reflect.Type) decoderFunc {
+	if c, ok := decoderCache.Load(t); ok {
+		return c.(decoderFunc)
 	}
 
-	// If the value has at least one method and can be an interface, try asserting it in an Unmarshal interface.
-	if rv.Type().NumMethod() > 0 && rv.CanInterface() {
-		if f, ok := s.IsUnmarshaler(rv); ok {
-			return f(data)
-		}
+	// To deal with recursive types, populate the map with an indirect func before we build it.
+	// This type waits on the real func (f) to be ready and then calls it.
+	// This indirect func is only used for recursive types.
+	var (
+		wg sync.WaitGroup
+		f  decoderFunc
+	)
+	wg.Add(1)
+	c, loaded := decoderCache.LoadOrStore(t, decoderFunc(func(s *decodeState, v reflect.Value) error {
+		wg.Wait()
+		return f(s, v)
+	}))
+	if loaded {
+		return c.(decoderFunc)
 	}
 
-	// If the input value is not a struct, decode it as a simple type.
-	if rv = rv.Elem(); rv.Kind() != reflect.Struct {
-		return s.decodeType(data, rv)
+	// Compute the real encoder and replace the indirect func with it.
+	_, f = s.typeCoders(t)
+	wg.Done()
+	decoderCache.Store(t, f)
+	return f
+}
+
+func (s *decodeState) removePrefixBytes(b []byte) error {
+	if !bytes.HasPrefix(s.buf, b) {
+		return fmt.Errorf("%s: %w", s.Name(), ErrInvalidFormat)
 	}
-
-	// The value is a struct, decode it as a struct type.
-	if err := s.decodeStruct(data, rv, s.wrap); err != nil {
-		return err
-	}
-
-	v = rv.Interface()
-
+	s.buf = s.buf[len(b):]
 	return nil
 }
 
-// decodeStruct decodes a byte array into a struct type.
-func (s *decodeState) decodeStruct(data []byte, v reflect.Value, unwrap bool) (err error) {
-	var separate bool
-
-	t := v.Type()
-	s.structName = t.Name()
+func (f *structFields) decode(s *decodeState, v reflect.Value, unwrap bool) (err error) {
+	var sep bool
 
 	if unwrap {
-		if data, err = s.unwrap(data); err != nil {
+		if err = s.removePrefixBytes(s.structOpener); err != nil {
 			return
 		}
 	}
 
-	// Scan v for fields to decode.
-	for i := 0; i < t.NumField(); i++ {
-		// If the data is over, stop decoding.
-		if bytes.Trim(data, " ") == nil {
-			return
+	for _, s.field = range *f {
+		if s.buf = bytes.Trim(s.buf, " "); s.buf == nil || unwrap && bytes.HasPrefix(s.buf, s.structCloser) {
+			break
 		}
 
-		structField := t.Field(i)
-		fieldValue := v.Field(i)
-
-		s.fieldName = structField.Name
-		s.context.fieldType = structField.Type
-
-		fieldType := structField.Type
-		if fieldType.Kind() == reflect.Pointer {
-			fieldType = fieldType.Elem()
-		}
-
-		if structField.Anonymous {
-			// Ignore embedded fields of unexported non-struct types.
-			if !structField.IsExported() && fieldType.Kind() != reflect.Struct {
-				continue
-			}
-
-			// Do not ignore embedded fields of unexported struct types since they may have exported fields.
-			if fieldValue.Kind() == reflect.Pointer {
-				if fieldValue.IsNil() {
-					return fmt.Errorf("%s: %w: %s", s.Name(), ErrPointerToUnexported, fieldValue.Type().Elem())
-				}
-				fieldValue = fieldValue.Elem()
-			}
-
-			if err = s.decodeStruct(data, fieldValue, false); err != nil {
-				return
-			}
-
-			if s.separate {
-				if data, err = s.removeSeparator(data); err != nil {
-					return
-				}
-			}
-
-			separate = s.separate
-			continue
-		} else if !structField.IsExported() {
-			// Ignore unexported non-embedded fields.
-			continue
-		}
-
-		tag, ok := structField.Tag.Lookup(s.Name())
-		if ok {
-			// Ignore the field if the tag has a skip value.
-			if !fieldValue.IsValid() || s.Skip(tag) {
-				continue
-			}
-		}
-
-		if separate {
-			if data, err = s.removeSeparator(data); err != nil {
+		if sep {
+			if err = s.removePrefixBytes(s.valueSeparator); err != nil {
 				return
 			}
 		}
+		sep = s.removeSeparator
 
-		var val []byte
-		if val, err = s.Decode(tag, structField.Name, data); err != nil {
-			return
-		}
+		rv := v.Field(s.field.index)
 
-		if len(val) == 0 {
+		if s.field.embedded != nil {
+			if rv.Kind() == reflect.Pointer {
+				if rv.IsNil() {
+					return fmt.Errorf("%s: %w: %s", s.Name(), ErrPointerToUnexported, rv.Type().Elem())
+				}
+				rv = rv.Elem()
+			}
+
+			if err = s.field.embedded.decode(s, rv, false); err != nil {
+				return
+			}
 			continue
 		}
 
-		if err = s.decodeType(val, fieldValue); err != nil {
-			return
+		if s.tmp, err = s.Decode(s.field.tag, s.field.name, s.buf); err != nil {
+			return err
 		}
 
-		separate = s.separate
+		if s.tmp == nil {
+			continue
+		}
+
+		if err = s.field.decoder(s, rv); err != nil {
+			return
+		}
+	}
+
+	if unwrap {
+		if err = s.removePrefixBytes(s.structCloser); err != nil {
+			return
+		}
 	}
 
 	return
 }
 
-// decodeType decodes a byte array into a simple type.
-func (s *decodeState) decodeType(data []byte, v reflect.Value) (err error) {
-	switch k := v.Kind(); k {
-	case reflect.Bool:
-		var b bool
-		if b, err = strconv.ParseBool(string(data)); err != nil {
-			return
-		}
-		v.SetBool(b)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		var i int64
-		if i, err = strconv.ParseInt(string(data), 10, bitSize(k)); err != nil {
-			return
-		}
-		v.SetInt(i)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		var u uint64
-		if u, err = strconv.ParseUint(string(data), 10, bitSize(k)); err != nil {
-			return
-		}
-		v.SetUint(u)
-	case reflect.Float32, reflect.Float64:
-		var f float64
-		if f, err = strconv.ParseFloat(string(data), bitSize(k)); err != nil {
-			return
-		}
-		v.SetFloat(f)
-	//case reflect.Array: // TODO
-	case reflect.Interface:
-		if !v.IsNil() {
-			return s.decode(data, v.Elem().Interface())
-		}
+func boolDecoder(s *decodeState, v reflect.Value) error {
+	r, err := strconv.ParseBool(string(s.tmp))
+	if err != nil {
+		return err
+	}
+	v.SetBool(r)
+	return nil
+}
+
+func intDecoder(s *decodeState, v reflect.Value) error {
+	r, err := strconv.ParseInt(string(s.tmp), 10, bitSize(v.Kind()))
+	if err != nil {
+		return err
+	}
+	v.SetInt(r)
+	return nil
+}
+
+func uintDecoder(s *decodeState, v reflect.Value) error {
+	r, err := strconv.ParseUint(string(s.tmp), 10, bitSize(v.Kind()))
+	if err != nil {
+		return err
+	}
+	v.SetUint(r)
+	return nil
+}
+
+func floatDecoder(s *decodeState, v reflect.Value) error {
+	r, err := strconv.ParseFloat(string(s.tmp), bitSize(v.Kind()))
+	if err != nil {
+		return err
+	}
+	v.SetFloat(r)
+	return nil
+}
+
+func interfaceDecoder(s *decodeState, v reflect.Value) error {
+	if v.IsNil() {
 		return ErrNilInterface
-	//case reflect.Map: // TODO
-	case reflect.Pointer:
-		if v.IsNil() {
-			v.Set(reflect.New(v.Type().Elem()).Elem().Addr())
-		}
-		return s.decodeType(data, v.Elem())
-	//case reflect.Slice: // TODO
-	case reflect.String:
-		v.SetString(string(data))
-	case reflect.Struct:
-		rv := reflect.New(v.Type())
-		rv.Elem().Set(reflect.ValueOf(v.Interface()))
-		if err = s.decode(data, rv.Interface()); err != nil {
-			return
-		}
-		v.Set(rv.Elem())
-	default:
-		return ErrNotSupportType
 	}
-	return
+	return s.reflectValue(v.Elem())
 }
 
-func (s *decodeState) unwrap(data []byte) ([]byte, error) {
-	if !bytes.HasPrefix(data, s.structOpener) || !bytes.HasSuffix(data, s.structCloser) {
-		return nil, fmt.Errorf("%s: %w", s.Name(), ErrInvalidFormat)
+func pointerDecoder(s *decodeState, v reflect.Value) error {
+	if v.IsNil() {
+		rv := reflect.New(v.Type().Elem())
+		if err := s.reflectValue(rv.Elem()); err != nil {
+			return err
+		}
+		if !isEmptyValue(rv.Elem()) {
+			v.Set(rv)
+		}
+		return nil
 	}
-	return data[len(s.structOpener) : len(data)-len(s.structCloser)], nil
+	return s.reflectValue(v.Elem())
 }
 
-func (s *decodeState) removeSeparator(data []byte) ([]byte, error) {
-	if !bytes.HasPrefix(data, s.valueSeparator) {
-		return nil, fmt.Errorf("%s: %w", s.Name(), ErrInvalidFormat)
+func sliceDecoder(s *decodeState, v reflect.Value) error {
+	return nil // TODO
+}
+
+func stringDecoder(s *decodeState, v reflect.Value) error {
+	v.SetString(string(s.tmp))
+	return nil
+}
+
+func structDecoder(s *decodeState, v reflect.Value) error {
+	f := s.cachedFields(v.Type())
+	return f.decode(s, v, s.wrap)
+}
+
+func unsupportedTypeDecoder(*decodeState, reflect.Value) error {
+	return ErrNotSupportType
+}
+
+func unmarshalerDecoder(s *decodeState, v reflect.Value) error {
+	var rv reflect.Value
+	if v.Kind() != reflect.Pointer {
+		rv = reflect.New(v.Type())
 	}
-	return data[len(s.valueSeparator):], nil
+
+	f, ok := s.IsUnmarshaler(rv)
+	if !ok {
+		return nil
+	}
+
+	if err := f(s.tmp); err != nil {
+		return err
+	}
+
+	v.Set(rv.Elem())
+	return nil
 }
