@@ -100,8 +100,10 @@ func (f *structFields) encode(s *encodeState, v reflect.Value, wrap bool) (err e
 	}
 
 	for _, s.field = range *f {
+		rv := v.Field(s.field.index)
+		
 		// Ignore the field if empty values can be omitted.
-		if s.field.omitEmpty && isEmptyValue(v) {
+		if s.field.omitEmpty && isEmptyValue(rv) {
 			continue
 		}
 
@@ -109,8 +111,6 @@ func (f *structFields) encode(s *encodeState, v reflect.Value, wrap bool) (err e
 			s.Write(s.valueSeparator)
 		}
 		sep = s.separate
-
-		rv := v.Field(s.field.index)
 
 		if s.field.embedded != nil {
 			if err = s.field.embedded.encode(s, valueFromPtr(rv), false); err != nil {
