@@ -101,6 +101,8 @@ func (s *decodeState) removePrefixBytes(b []byte) error {
 func (f *structFields) decode(s *decodeState, v reflect.Value, unwrap bool) (err error) {
 	var sep bool
 
+	s.structName = v.Type().Name()
+
 	if unwrap {
 		if err = s.removePrefixBytes(s.structOpener); err != nil {
 			return
@@ -212,6 +214,11 @@ func pointerDecoder(s *decodeState, v reflect.Value) error {
 		return nil
 	}
 	return s.reflectValue(v.Elem())
+}
+
+func bytesDecoder(s *decodeState, v reflect.Value) error {
+	v.SetBytes(s.tmp)
+	return nil
 }
 
 func sliceDecoder(s *decodeState, v reflect.Value) error {

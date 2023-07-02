@@ -95,13 +95,15 @@ func (s *encodeState) encode(data []byte) error {
 func (f *structFields) encode(s *encodeState, v reflect.Value, wrap bool) (err error) {
 	var sep bool
 
+	s.structName = v.Type().Name()
+
 	if wrap {
 		s.Write(s.structOpener)
 	}
 
 	for _, s.field = range *f {
 		rv := v.Field(s.field.index)
-		
+
 		// Ignore the field if empty values can be omitted.
 		if s.field.omitEmpty && isEmptyValue(rv) {
 			continue
@@ -156,6 +158,10 @@ func interfaceEncoder(s *encodeState, v reflect.Value) error {
 
 func pointerEncoder(s *encodeState, v reflect.Value) error {
 	return s.reflectValue(valueFromPtr(v))
+}
+
+func bytesEncoder(s *encodeState, v reflect.Value) error {
+	return s.encode(v.Bytes())
 }
 
 func sliceEncoder(s *encodeState, v reflect.Value) error {

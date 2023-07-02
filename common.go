@@ -41,7 +41,7 @@ func (e *engine) cachedFields(t reflect.Type) structFields {
 
 // typeFields returns a list of fields that the encoder should recognize for the given type.
 func (e *engine) typeFields(t reflect.Type) structFields {
-	var fields structFields
+	fields := make(structFields, 0, t.NumField())
 
 	// Scan v for fields to encode.
 	for i := 0; i < t.NumField(); i++ {
@@ -97,41 +97,60 @@ func (e *engine) typeFields(t reflect.Type) structFields {
 
 // typeCoders returns decoderFunc and encoderFunc for a type.
 func (e *engine) typeCoders(t reflect.Type) (ef encoderFunc, df decoderFunc) {
+	if t.Kind() != reflect.Pointer {
+		p := reflect.PointerTo(t)
+		if p.Implements(e.marshaller) {
+			ef = marshallerEncoder
+		}
+		if p.Implements(e.unmarshaler) {
+			df = unmarshalerDecoder
+			if ef != nil {
+				return
+			}
+		}
+	}
+
 	switch t.Kind() {
 	case reflect.Bool:
-		ef, df = boolEncoder, boolDecoder
+		return setCoder(ef, boolEncoder), setCoder(df, boolDecoder)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		ef, df = intEncoder, intDecoder
+		return setCoder(ef, intEncoder), setCoder(df, intDecoder)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		ef, df = uintEncoder, uintDecoder
+		return setCoder(ef, uintEncoder), setCoder(df, uintDecoder)
 	case reflect.Float32, reflect.Float64:
-		ef, df = floatEncoder, floatDecoder
+		return setCoder(ef, floatEncoder), setCoder(df, floatDecoder)
 	//case reflect.Array:
-	//	ef, df =  arrayEncoder, arrayDecoder
+	//	return setCoder(ef, arrayEncoder), setCoder(df, arrayDecoder)
 	case reflect.Interface:
-		ef, df = interfaceEncoder, interfaceDecoder
+		return setCoder(ef, interfaceEncoder), setCoder(df, interfaceDecoder)
 	//case reflect.Map:
-	//	ef, df =  mapEncoder, mapDecoder
+	//	return setCoder(ef, mapEncoder), setCoder(df, mapDecoder)
 	case reflect.Pointer:
-		ef, df = pointerEncoder, pointerDecoder
-	//case reflect.Slice:
-	//	ef, df =  sliceEncoder, sliceDecoder
+		return setCoder(ef, pointerEncoder), setCoder(df, pointerDecoder)
+	case reflect.Slice:
+		return sliceCoders(t, ef, df)
 	case reflect.String:
-		ef, df = stringEncoder, stringDecoder
+		return setCoder(ef, stringEncoder), setCoder(df, stringDecoder)
 	case reflect.Struct:
-		ef, df = structEncoder, structDecoder
+		return setCoder(ef, structEncoder), setCoder(df, structDecoder)
 	default:
-		ef, df = unsupportedTypeEncoder, unsupportedTypeDecoder
+		return setCoder(ef, unsupportedTypeEncoder), setCoder(df, unsupportedTypeDecoder)
 	}
+}
 
-	if t.Kind() != reflect.Pointer && reflect.PointerTo(t).Implements(e.marshaller) {
-		ef = marshallerEncoder
+func setCoder[T encoderFunc | decoderFunc](i, f T) T {
+	if i != nil {
+		return i
 	}
-	if t.Kind() != reflect.Pointer && reflect.PointerTo(t).Implements(e.unmarshaler) {
-		df = unmarshalerDecoder
-	}
+	return f
+}
 
-	return
+func sliceCoders(t reflect.Type, ef encoderFunc, df decoderFunc) (encoderFunc, decoderFunc) {
+	if t.Elem().Kind() == reflect.Uint8 {
+		return setCoder(ef, bytesEncoder), setCoder(df, bytesDecoder)
+	} else {
+		return setCoder(ef, unsupportedTypeEncoder), setCoder(df, unsupportedTypeDecoder)
+	}
 }
 
 func bitSize(v reflect.Kind) int {
