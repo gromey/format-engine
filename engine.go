@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"io"
 	"reflect"
 )
 
@@ -12,33 +13,39 @@ type Engine interface {
 	Unmarshal(data []byte, v any) error
 }
 
+type Writer interface {
+	io.Writer
+	io.ByteWriter
+}
+
 // Tag describes what functions an entity should implement to use when creating a new Engine entity.
-// The entity must include an engine.Default that implements following methods:
+// The entity must include an engine.Default that implements following default methods:
 //   - Skip;
-//   - Omitempty;
-//   - IsMarshaller;
-//   - IsUnmarshaler.
+//   - Parse.
 //
 // So it may not implement these methods.
-type Tag interface {
+type Tag[T any] interface {
 	// Name returns the name of the tag. It's a mandatory function.
 	Name() string
-	// Encode takes encoded data and performs secondary encoding.
-	// It's a mandatory function.
-	Encode(tagValue, fieldName string, data []byte) ([]byte, error)
-	// Decode takes the raw encoded data and performs a primary decode.
-	// It's a mandatory function.
-	Decode(tagValue, fieldName string, data []byte) ([]byte, error)
 	// Skip returns a flag indicating that the field should be ignored.
 	Skip(tagValue string) bool
-	// Omitempty returns a flag indicating that the field is skipped if empty.
-	Omitempty(tagValue string) bool
+	// Parse gets a tagValue string, parses the tagValue into tag *T,
+	// returns a flag indicating that the field is skipped if it's empty,
+	// and if parsing fails, it returns an error.
+	Parse(tagValue string, tag *T) (bool, error)
+	// Encode takes encoded data and performs secondary encoding.
+	// It's a mandatory function.
+	Encode(fieldName string, tag *T, in []byte, out Writer) error
+	// Decode takes the raw encoded data and performs a primary decode.
+	// It's a mandatory function.
+	Decode(fieldName string, tag *T, in []byte, out Writer) error
 	// IsMarshaller attempts to cast the value to a Marshaller interface,
 	// if so, returns a marshal function.
-	IsMarshaller(rv reflect.Value) (func() ([]byte, error), bool)
+	IsMarshaller(v reflect.Value) (func() ([]byte, error), bool)
 	// IsUnmarshaler attempts to cast the value to an Unmarshaler interface,
 	// if so, returns an unmarshal function.
-	IsUnmarshaler(rv reflect.Value) (func([]byte) error, bool)
+	IsUnmarshaler(v reflect.Value) (func([]byte) error, bool)
+
 	f()
 }
 
@@ -62,16 +69,16 @@ type Config struct {
 	Unmarshaler reflect.Type
 }
 
-type engine struct {
-	Tag
+type engine[T any] struct {
+	Tag[T]
 	wrap, separate, removeSeparator            bool
 	structOpener, structCloser, valueSeparator []byte
 	marshaller, unmarshaler                    reflect.Type
 }
 
 // New returns a new entity that implements the Engine interface.
-func New(tag Tag, cfg Config) Engine {
-	return &engine{
+func New[T any](tag Tag[T], cfg Config) Engine {
+	return &engine[T]{
 		Tag:             tag,
 		wrap:            (len(cfg.StructOpener) != 0 || len(cfg.StructCloser) != 0) && cfg.UnwrapWhenDecoding,
 		separate:        len(cfg.ValueSeparator) != 0,

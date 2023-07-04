@@ -1,25 +1,13 @@
 package engine
 
-import (
-	"reflect"
-)
+type Default[T any] struct{}
 
-type Default struct{}
-
-func (d Default) Skip(string) bool {
+func (d Default[T]) Skip(string) bool {
 	return false
 }
 
-func (d Default) Omitempty(string) bool {
-	return false
+func (d Default[T]) Parse(string, *T) (bool, error) {
+	return false, nil
 }
 
-func (d Default) IsMarshaller(reflect.Value) (func() ([]byte, error), bool) {
-	return nil, false
-}
-
-func (d Default) IsUnmarshaler(reflect.Value) (func([]byte) error, bool) {
-	return nil, false
-}
-
-func (d Default) f() {}
+func (d Default[T]) f() {}

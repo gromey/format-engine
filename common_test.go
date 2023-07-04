@@ -133,18 +133,20 @@ func Test_isEmptyValue(t *testing.T) {
 	}
 }
 
+type empty struct{}
+
 func Test_contextSetError(t *testing.T) {
 	name := "tagName"
 	str := "marshal/unmarshal"
 
 	var tests = []struct {
-		ctx    context
+		ctx    context[empty]
 		expect error
 	}{
 		{
-			ctx: context{
+			ctx: context[empty]{
 				structName: "structName",
-				field: field{
+				field: field[empty]{
 					name: "fieldName",
 					typ:  reflect.TypeOf(true),
 				},
@@ -153,9 +155,9 @@ func Test_contextSetError(t *testing.T) {
 			expect: errors.New("tagName: cannot marshal/unmarshal Go struct field structName.fieldName of type bool: cannot support type"),
 		},
 		{
-			ctx: context{
+			ctx: context[empty]{
 				structName: "",
-				field: field{
+				field: field[empty]{
 					name: "fieldName",
 					typ:  reflect.TypeOf(true),
 				},

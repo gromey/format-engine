@@ -8,6 +8,8 @@ import (
 )
 
 var (
+	errExist = errors.New("exist")
+
 	ErrNotSupportType      = errors.New("cannot support type")
 	ErrNilInterface        = errors.New("interface is nil")
 	ErrPointerToUnexported = errors.New("cannot set embedded pointer to unexported struct")
@@ -15,40 +17,42 @@ var (
 )
 
 // field represents a single field found in a struct.
-type field struct {
+type field[T any] struct {
 	index     int
 	name      string
 	typ       reflect.Type
-	tag       string
+	meta      *T
 	omitEmpty bool
-	encoder   encoderFunc
-	decoder   decoderFunc
-	embedded  structFields
+	encoder   encoderFunc[T]
+	decoder   decoderFunc[T]
+	embedded  structFields[T]
 }
 
-type structFields []field
+type structFields[T any] []field[T]
 
-var fieldCache sync.Map // map[reflect.Type]structFields
+var fieldCache sync.Map // map[reflect.Type]structFields[T]
 
 // cachedFields is like typeFields but uses a cache to avoid repeated work.
-func (e *engine) cachedFields(t reflect.Type) structFields {
+func (e *engine[T]) cachedFields(t reflect.Type) structFields[T] {
 	if c, ok := fieldCache.Load(t); ok {
-		return c.(structFields)
+		return c.(structFields[T])
 	}
 	c, _ := fieldCache.LoadOrStore(t, e.typeFields(t))
-	return c.(structFields)
+	return c.(structFields[T])
 }
 
 // typeFields returns a list of fields that the encoder should recognize for the given type.
-func (e *engine) typeFields(t reflect.Type) structFields {
-	fields := make(structFields, 0, t.NumField())
+func (e *engine[T]) typeFields(t reflect.Type) structFields[T] {
+	var err error
+
+	fields := make(structFields[T], 0, t.NumField())
 
 	// Scan v for fields to encode.
 	for i := 0; i < t.NumField(); i++ {
 		structField := t.Field(i)
 		fieldType := structField.Type
 
-		fld := field{
+		fld := field[T]{
 			index: i,
 			name:  structField.Name,
 			typ:   fieldType,
@@ -84,8 +88,11 @@ func (e *engine) typeFields(t reflect.Type) structFields {
 				continue
 			}
 
-			fld.tag = tag
-			fld.omitEmpty = e.Omitempty(tag)
+			fld.meta = new(T)
+			if fld.omitEmpty, err = e.Parse(tag, fld.meta); err != nil {
+				fld.encoder, fld.decoder = invalidTagEncoder[T](tag, err), invalidTagDecoder[T](tag, err)
+				return append(fields, fld)
+			}
 		}
 
 		fld.encoder, fld.decoder = e.typeCoders(fieldType)
@@ -95,15 +102,15 @@ func (e *engine) typeFields(t reflect.Type) structFields {
 	return fields
 }
 
-// typeCoders returns decoderFunc and encoderFunc for a type.
-func (e *engine) typeCoders(t reflect.Type) (ef encoderFunc, df decoderFunc) {
+// typeCoders returns encoderFunc and decoderFunc for a type.
+func (e *engine[T]) typeCoders(t reflect.Type) (ef encoderFunc[T], df decoderFunc[T]) {
 	if t.Kind() != reflect.Pointer {
 		p := reflect.PointerTo(t)
 		if p.Implements(e.marshaller) {
-			ef = marshallerEncoder
+			ef = marshallerEncoder[T]
 		}
 		if p.Implements(e.unmarshaler) {
-			df = unmarshalerDecoder
+			df = unmarshalerDecoder[T]
 			if ef != nil {
 				return
 			}
@@ -112,44 +119,44 @@ func (e *engine) typeCoders(t reflect.Type) (ef encoderFunc, df decoderFunc) {
 
 	switch t.Kind() {
 	case reflect.Bool:
-		return setCoder(ef, boolEncoder), setCoder(df, boolDecoder)
+		return setCoder[T](ef, boolEncoder[T]), setCoder[T](df, boolDecoder[T])
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return setCoder(ef, intEncoder), setCoder(df, intDecoder)
+		return setCoder[T](ef, intEncoder[T]), setCoder[T](df, intDecoder[T])
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return setCoder(ef, uintEncoder), setCoder(df, uintDecoder)
+		return setCoder[T](ef, uintEncoder[T]), setCoder[T](df, uintDecoder[T])
 	case reflect.Float32, reflect.Float64:
-		return setCoder(ef, floatEncoder), setCoder(df, floatDecoder)
+		return setCoder[T](ef, floatEncoder[T]), setCoder[T](df, floatDecoder[T])
 	//case reflect.Array:
-	//	return setCoder(ef, arrayEncoder), setCoder(df, arrayDecoder)
+	//	return setCoder[T](ef, arrayEncoder[T]), setCoder[T](df, arrayDecoder[T])
 	case reflect.Interface:
-		return setCoder(ef, interfaceEncoder), setCoder(df, interfaceDecoder)
+		return setCoder[T](ef, interfaceEncoder[T]), setCoder[T](df, interfaceDecoder[T])
 	//case reflect.Map:
-	//	return setCoder(ef, mapEncoder), setCoder(df, mapDecoder)
+	//	return setCoder[T](ef, mapEncoder[T]), setCoder[T](df, mapDecoder[T])
 	case reflect.Pointer:
-		return setCoder(ef, pointerEncoder), setCoder(df, pointerDecoder)
+		return setCoder[T](ef, pointerEncoder[T]), setCoder[T](df, pointerDecoder[T])
 	case reflect.Slice:
 		return sliceCoders(t, ef, df)
 	case reflect.String:
-		return setCoder(ef, stringEncoder), setCoder(df, stringDecoder)
+		return setCoder[T](ef, stringEncoder[T]), setCoder[T](df, stringDecoder[T])
 	case reflect.Struct:
-		return setCoder(ef, structEncoder), setCoder(df, structDecoder)
+		return setCoder[T](ef, structEncoder[T]), setCoder[T](df, structDecoder[T])
 	default:
-		return setCoder(ef, unsupportedTypeEncoder), setCoder(df, unsupportedTypeDecoder)
+		return setCoder[T](ef, unsupportedTypeEncoder[T]), setCoder[T](df, unsupportedTypeDecoder[T])
 	}
 }
 
-func setCoder[T encoderFunc | decoderFunc](i, f T) T {
+func setCoder[T any, F encoderFunc[T] | decoderFunc[T]](i, f F) F {
 	if i != nil {
 		return i
 	}
 	return f
 }
 
-func sliceCoders(t reflect.Type, ef encoderFunc, df decoderFunc) (encoderFunc, decoderFunc) {
+func sliceCoders[T any](t reflect.Type, ef encoderFunc[T], df decoderFunc[T]) (encoderFunc[T], decoderFunc[T]) {
 	if t.Elem().Kind() == reflect.Uint8 {
-		return setCoder(ef, bytesEncoder), setCoder(df, bytesDecoder)
+		return setCoder[T](ef, bytesEncoder[T]), setCoder[T](df, bytesDecoder[T])
 	} else {
-		return setCoder(ef, unsupportedTypeEncoder), setCoder(df, unsupportedTypeDecoder)
+		return setCoder[T](ef, unsupportedTypeEncoder[T]), setCoder[T](df, unsupportedTypeDecoder[T])
 	}
 }
 
@@ -187,13 +194,13 @@ func isEmptyValue(v reflect.Value) bool {
 	return false
 }
 
-type context struct {
+type context[T any] struct {
 	structName string
-	field      field
+	field      field[T]
 	err        error
 }
 
-func (c *context) setError(tagName, state string, err error) {
+func (c *context[T]) setError(tagName, state string, err error) {
 	err = unwrapErr(err)
 	if c.structName == "" {
 		c.err = fmt.Errorf("%s: cannot %s Go value of type %s: %w", tagName, state, c.field.typ, err)

@@ -11,7 +11,7 @@ type Marshaller interface {
 
 // IsMarshaller attempts to cast the value to {{.UCName}} Marshaller interface,
 // if so, returns a marshal function.
-func (t tag) IsMarshaller(rv reflect.Value) (func() ([]byte, error), bool) {
+func (e engineTag) IsMarshaller(rv reflect.Value) (func() ([]byte, error), bool) {
 	if i, ok := rv.Interface().(Marshaller); ok {
 		return i.Marshal{{.UCName}}, ok
 	}
@@ -26,7 +26,7 @@ type Unmarshaler interface {
 
 // IsUnmarshaler attempts to cast the value to {{.UCName}} Unmarshaler interface,
 // if so, returns an unmarshal function.
-func (t tag) IsUnmarshaler(rv reflect.Value) (func([]byte) error, bool) {
+func (e engineTag) IsUnmarshaler(rv reflect.Value) (func([]byte) error, bool) {
 	if i, ok := rv.Interface().(Unmarshaler); ok {
 		return i.Unmarshal{{.UCName}}, ok
 	}

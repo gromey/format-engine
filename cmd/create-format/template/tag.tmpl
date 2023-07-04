@@ -17,7 +17,7 @@ var (
         Marshaller:  reflect.TypeOf((*Marshaller)(nil)).Elem(),
         Unmarshaler: reflect.TypeOf((*Unmarshaler)(nil)).Elem(),
 	}
-	{{.LCName}} = engine.New(tag{name: "{{.LCName}}"}, cfg)
+	{{.LCName}} = engine.New[tag](&engineTag{name: "{{.LCName}}"}, cfg)
 )
 
 // Marshal encodes the value v and returns the encoded data.
@@ -30,35 +30,48 @@ func Unmarshal(b []byte, v any) error {
 	return {{.LCName}}.Unmarshal(b, v)
 }
 
-type tag struct {
+type engineTag struct {
 	name string
-	engine.Default
+	engine.Default[tag]
 }
 
+type tag struct {}
+
 // Name returns the name of the tag.
-func (t tag) Name() string {
-	return t.name
+func (e engineTag) Name() string {
+	return e.name
+}
+
+// Skip returns a flag indicating that the field should be ignored.
+func (e engineTag) Skip(tagValue string) bool {
+    // TODO If you want you can define your own condition for skipping fields. If you don't need to skip fields you can remove this method.
+	return tagValue == "-"
+}
+
+// Parse gets a tagValue string, parses the tagValue into tag *tag,
+// returns a flag indicating that the field is skipped if it's empty.
+func (e engineTag) Parse(tagValue string, tag *tag) (omit bool, err error) {
+    // TODO If you don't use tags, you can remove this method!
+ 	return
 }
 
 // Encode takes encoded data and performs secondary encoding to {{.UCName}} format.
-func (t tag) Encode(tagValue, fieldName string, data []byte) ([]byte, error) {
+func (e engineTag) Encode(tagValue string, tag *tag, in []byte, out engine.Writer) (err error) {
     // TODO If you need to format data implement me!
-	return data, nil
+    _, err = out.Write(in)
+    return
 }
 
 // Decode takes the raw encoded data and performs a primary decode from {{.UCName}} format.
-func (t tag) Decode(tagValue, fieldName string, data []byte) ([]byte, error) {
-    // TODO Implement me!
-    // Because format-engine doesn't know anything about your format,
-    // you need to find the field value and performs a primary decode.
-    // If cfg.RemoveSeparatorWhenDecoding is true you must remove the field value from the input data.
-    // Example:
-    //      i := bytes.Index(data, cfg.ValueSeparator)
-    //      value := make([]byte, i)
-    //      copy(value, data[:i])
-    //      copy(data, data[i:])
-    //      copy(data[len(data)-i:], bytes.Repeat([]byte{' '}, i))
-    //      return value, nil
+func (e engineTag) Decode(tagValue string, tag *tag, in []byte, out engine.Writer) (err error) {
+	// TODO Implement me!
+	// Because format-engine doesn't know anything about your format,
+	// you need to find the field value and performs a primary decode.
+	// If cfg.RemoveSeparatorWhenDecoding is true you must remove the field value from the input data.
+	// Example:
+	//		i := bytes.Index(in, cfg.ValueSeparator)
+	//		_, err = out.Write(in[:i])
+	//		copy(in, in[i:])
 
-	return data, nil
+	return
 }
