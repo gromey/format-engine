@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"io"
 	"reflect"
 )
 
@@ -14,8 +13,9 @@ type Engine interface {
 }
 
 type Writer interface {
-	io.Writer
-	io.ByteWriter
+	Write(p []byte) (n int, err error)
+	WriteByte(c byte) error
+	WriteString(s string) (n int, err error)
 }
 
 // Tag describes what functions an entity should implement to use when creating a new Engine entity.

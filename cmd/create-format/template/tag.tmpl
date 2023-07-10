@@ -56,14 +56,14 @@ func (e engineTag) Parse(tagValue string, tag *tag) (omit bool, err error) {
 }
 
 // Encode takes encoded data and performs secondary encoding to {{.UCName}} format.
-func (e engineTag) Encode(tagValue string, tag *tag, in []byte, out engine.Writer) (err error) {
+func (e engineTag) Encode(fieldName string, tag *tag, in []byte, out engine.Writer) (err error) {
     // TODO If you need to format data implement me!
     _, err = out.Write(in)
     return
 }
 
 // Decode takes the raw encoded data and performs a primary decode from {{.UCName}} format.
-func (e engineTag) Decode(tagValue string, tag *tag, in []byte, out engine.Writer) (err error) {
+func (e engineTag) Decode(fieldName string, tag *tag, in []byte, out engine.Writer) (err error) {
 	// TODO Implement me!
 	// Because format-engine doesn't know anything about your format,
 	// you need to find the field value and performs a primary decode.
